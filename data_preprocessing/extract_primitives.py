@@ -1,4 +1,5 @@
 import os
+import time
 import h5py
 import torch
 import logging
@@ -151,22 +152,43 @@ def run_vibe_extraction(source_root, output_root, train_xlsx, val_xlsx):
     for split, xlsx_path in [('train', train_xlsx), ('val', val_xlsx)]:
         logger.info(f"Processing Split: {split.upper()}")
         
-        if not os.path.exists(xlsx_path):
-            logger.warning(f"Excel file not found: {xlsx_path}. Skipping {split}.")
-            continue
-            
-        df = pd.read_excel(xlsx_path)
-        dest_dir = Path(output_root) / split
-        dest_dir.mkdir(parents=True, exist_ok=True)
         source_dir = Path(source_root) / 'data' / split
-        
-        if not source_dir.exists():
-            logger.warning(f"Source directory not found: {source_dir}. Have you run the preprocessor?")
+        json_meta_path = Path(source_root) / 'metadata' / f'{split}_index.json'
+        df = pd.DataFrame()
+        if os.path.exists(xlsx_path):
+            df = pd.read_excel(xlsx_path)
+        elif json_meta_path.exists():
+            try:
+                df = pd.read_json(json_meta_path)
+            except Exception:
+                df = pd.DataFrame()
+
+        if df.empty and source_dir.exists() and list(source_dir.glob('*.h5')):
+            # Only include files older than 60 s to avoid reading files
+            # still being written by a concurrent preprocessing run.
+            cutoff = time.time() - 60
+            h5_files = sorted([
+                p for p in source_dir.glob('*.h5')
+                if p.stat().st_mtime < cutoff
+            ])
+            df = pd.DataFrame([{'video_name': p.stem} for p in h5_files])
+            logger.info(f"Discovered {len(df)} stable HDF5 files (>60s old) from {source_dir}")
+
+        if df.empty:
+            logger.warning(f"Metadata file not found or empty ({xlsx_path} or {json_meta_path}). Skipping {split}.")
             continue
+
+        # Resolve to absolute path so the directory is stable even if the
+        # caller's working directory changes or a relative path is cleaned up.
+        dest_dir = Path(output_root).resolve() / split
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Output directory: {dest_dir}")
 
         processed_count = 0
         for _, row in tqdm(df.iterrows(), total=len(df), desc=f"VIBE Extraction ({split})"):
-            vid_id = str(row['Vid_name']).strip()
+            vid_id = str(row.get('Vid_name', row.get('video_name', ''))).strip()
+            if not vid_id:
+                continue
             h5_in_file = source_dir / f"{vid_id}.h5"
             
             if not h5_in_file.exists(): 
@@ -182,9 +204,11 @@ def run_vibe_extraction(source_root, output_root, train_xlsx, val_xlsx):
                     persons = [f_in[f'persons/{pid}/visual'][:] for pid in pids]
                     trajectories = {int(pid): f_in[f'persons/{pid}/raw_coords'][:] for pid in pids}
                     
-                    primitives = engine.extract_primitives(frames, persons, trajectories, audio, str(row['Description']))
+                    desc_text = str(row.get('Description', row.get('description', '')))
+                    primitives = engine.extract_primitives(frames, persons, trajectories, audio, desc_text)
                     
                     # Save as Sequential HDF5
+                    dest_dir.mkdir(parents=True, exist_ok=True)  # re-assert in case of external deletion
                     with h5py.File(dest_dir / f"{vid_id}_vibe.h5", 'w') as f_out:
                         f_out.create_dataset('global_v_seq', data=primitives['global_v_seq'], compression='gzip')
                         f_out.create_dataset('env_feat', data=primitives['env_feat'], compression='gzip')
@@ -196,7 +220,14 @@ def run_vibe_extraction(source_root, output_root, train_xlsx, val_xlsx):
                         for i, p_seq in enumerate(primitives['local_p_seqs']):
                             p_group.create_dataset(f'p_{i}', data=p_seq, compression='gzip')
                         
-                        f_out.attrs['label'] = row['Label']
+                        label_val = row.get('Label', row.get('label', -1))
+                        if label_val == -1 and 'label' in f_in.attrs:
+                            label_val = f_in.attrs['label']
+                        if label_val == -1:
+                            if vid_id.startswith('videoH'): label_val = 1
+                            elif vid_id.startswith('videoN'): label_val = 2
+                            elif vid_id.startswith('videoS'): label_val = 3
+                        f_out.attrs['label'] = label_val
                         processed_count += 1
             except Exception as e:
                 logger.error(f"Failed to process {vid_id}: {e}")

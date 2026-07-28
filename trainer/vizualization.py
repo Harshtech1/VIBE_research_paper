@@ -28,7 +28,7 @@ class VIBE_DeepVisualizer:
         if len(labels) > 800:
             idx = np.random.choice(len(labels), 800, replace=False)
             h_final, labels = h_final[idx], labels[idx]
-        tsne = TSNE(n_components=3, perplexity=30, init='pca', learning_rate='auto')
+        tsne = TSNE(n_components=3, perplexity=min(30, len(h_final) - 1), init='pca', learning_rate='auto')
         emb = tsne.fit_transform(h_final)
         class_names = ['Pos', 'Neg', 'Neu']
         txt_labels = [class_names[i] for i in labels]
@@ -52,7 +52,8 @@ class VIBE_DeepVisualizer:
             idx = np.random.choice(len(labels), 600, replace=False)
             z_aff, z_env, labels = z_aff[idx], z_env[idx], labels[idx]
         combined = np.concatenate([z_aff, z_env], axis=0)
-        proj = TSNE(n_components=2, perplexity=30, init='pca', learning_rate='auto').fit_transform(combined)
+        perplexity = min(30, len(combined) - 1)
+        proj = TSNE(n_components=2, perplexity=perplexity, init='pca', learning_rate='auto').fit_transform(combined)
         p_aff, p_env = proj[:len(z_aff)], proj[len(z_aff):]
         class_names = ['Pos', 'Neg', 'Neu']
         txt_labels = [class_names[i] for i in labels]
