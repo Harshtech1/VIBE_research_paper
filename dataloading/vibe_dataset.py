@@ -34,7 +34,7 @@ class VIBEDataset(Dataset):
                 env_feat = torch.from_numpy(f['env_feat'][:]).squeeze(0)
                 text_anch = torch.from_numpy(f['text_anch'][:]).squeeze(0)
 
-                person_seqs = []V_Los
+                person_seqs = []
                 p_group = f['person_sequences']
                 p_keys = sorted(p_group.keys(), key=lambda x: int(x.split('_')[1]))
                 
@@ -59,7 +59,9 @@ class VIBEDataset(Dataset):
                 padded_sync[:k_limit, :k_limit] = sync_mat[:k_limit, :k_limit]
 
                 audio_seq = torch.from_numpy(f['audio_seq'][:])
-                if audio_seq.shape[0] > self.max_t:
+                if audio_seq.ndim < 2 or audio_seq.shape[0] == 0:
+                    audio_seq = torch.zeros(self.max_t, 768)
+                elif audio_seq.shape[0] > self.max_t:
                     audio_seq = audio_seq[:self.max_t]
                 elif audio_seq.shape[0] < self.max_t:
                     pad_a = torch.zeros(self.max_t - audio_seq.shape[0], 768)
@@ -132,13 +134,13 @@ def create_group_split(data_root_path, val_ratio=0.2):
     Prevents data leakage from training to validation.
     """
     train_source = Path(data_root_path) / 'train'
-    all_files = sorted(list(train_source.glob("*_csync.h5")))
+    all_files = sorted(list(train_source.glob("*_vibe.h5")))
     
     # 1. Group files by Video ID (Prefix before the first underscore)
-    # Example: '1_1_csync.h5' -> '1', '5_2_csync.h5' -> '5'
+    # Example: '1_1_vibe.h5' -> '1', '5_2_vibe.h5' -> '5'
     video_groups = defaultdict(list)
     for f in all_files:
-        # Extract ID: "5_1_csync.h5" -> "5"
+        # Extract ID: "5_1_vibe.h5" -> "5"
         video_id = f.name.split('_')[0]
         video_groups[video_id].append(f)
     

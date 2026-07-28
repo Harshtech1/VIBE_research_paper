@@ -54,7 +54,7 @@ class VIBETrainer:
         
         # --- B. Load Original Validation Set as 'Test' ---
         test_source = Path(cfg['data_root']) / 'val'
-        test_files = sorted(list(test_source.glob("*_csync.h5")))
+        test_files = sorted(list(test_source.glob("*_vibe.h5")))
         self.test_loader = DataLoader(
             VIBEDataset(test_files, max_k=max_k, max_t=max_t),
             batch_size=cfg['batch_size'], shuffle=False,
@@ -70,7 +70,7 @@ class VIBETrainer:
             num_classes=cfg.get('num_classes', 3)
         ).to(self.device)
         
-        # --- D. Init Loss (V5.5 Improved) ---
+        # --- D. Init Loss (V5.5 Improved) ---find . \( -iname "*.mp4" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.mkv" \)
         self.criterion = VIBE_Loss(
             lambda_sat=cfg.get('lambda_sat', 0.5),
             lambda_ortho=cfg.get('lambda_ortho', 0.1) # New Ortho Weight
@@ -79,8 +79,8 @@ class VIBETrainer:
         # --- E. Optimizer & Scheduler ---
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(), 
-            lr=cfg['lr'],
-            weight_decay=cfg.get('weight_decay', 0.01)
+            lr=float(cfg['lr']),
+            weight_decay=float(cfg.get('weight_decay', 0.01))
         )
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, 
@@ -122,7 +122,7 @@ class VIBETrainer:
                 )
                 
                 # Loss Calculation (Unpacking Ortho Loss now)
-                loss, l_ce, l_sup, l_ortho = self.criterion(
+                loss, l_ce, l_sup, l_ortho, l_kl = self.criterion(
                     out, batch['labels'], batch
                 )
                 
@@ -135,9 +135,11 @@ class VIBETrainer:
                 
                 # Monitor Disentanglement (Ortho) in realtime
                 pbar.set_postfix({
-                    'L': f"{loss.item():.3f}", 
-                    'CE': f"{l_ce.item():.3f}",
-                    'Ort': f"{l_ortho.item():.3f}"
+                    "Loss": f"{loss.item():.3f}",
+                    "HCE": f"{l_ce.item():.3f}",
+                    "SAT": f"{l_sup.item():.3f}",
+                    "ORTHO": f"{l_ortho.item():.3f}",
+                    "KL": f"{l_kl.item():.3f}",
                 })
             
             metrics = self.validate(epoch, self.val_loader, mode='Val')
@@ -164,9 +166,13 @@ class VIBETrainer:
         print("\n\n" + "="*50)
         print("  FINAL EVALUATION ON HELD-OUT TEST SET")
         print("="*50)
-        best_ckpt = torch.load(self.ckpt_dir / "model_best.pth")
-        self.model.load_state_dict(best_ckpt)
-        self.validate(epochs, self.test_loader, mode='Test')
+        best_ckpt_path = self.ckpt_dir / "model_best.pth"
+        if best_ckpt_path.exists():
+            best_ckpt = torch.load(best_ckpt_path)
+            self.model.load_state_dict(best_ckpt)
+            self.validate(epochs, self.test_loader, mode='Test')
+        else:
+            print("  WARNING: model_best.pth not found (no epoch exceeded save_threshold). Skipping final test evaluation.")
         self.writer.close()
 
     @torch.no_grad()
@@ -246,7 +252,7 @@ class VIBETrainer:
             print("\n" + "="*50)
             print(f"  {mode} Report | Epoch {epoch}")
             print("="*50)
-            print(classification_report(targets, preds, target_names=['Pos', 'Neu', 'Neg'], zero_division=0))
+            print(classification_report(targets, preds, labels=[0, 1, 2], target_names=['Pos', 'Neu', 'Neg'], zero_division=0))
             print("-" * 50)
             print(f"  > Accuracy             : {acc:.4f}")
             print(f"  > F1 Score (Weighted)  : {f1:.4f}")

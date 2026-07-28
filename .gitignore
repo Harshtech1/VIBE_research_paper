@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Dataset
+datasets/
+
+# HDF5 generated files
+*.h5
+*_processed/
+*_VIBE_PRIMITIVES/
+*_primitives/
+
+# Model checkpoints
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# Logs
+logs/
+runs/
+wandb/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -213,6 +213,12 @@ class GEVCDataPreprocessor:
             if target_dir: break
             
         if not target_dir:
+            # Fallback: search dataset_root directly for mp4 files (e.g. positive/neutral/negative structure)
+            if split.lower() == 'train' and self.dataset_root.exists():
+                files = [p for p in self.dataset_root.rglob('*') if p.is_file() and p.suffix.lower() == '.mp4']
+                if files:
+                    logger.info(f"Found {len(files)} videos under dataset root: {self.dataset_root}")
+                    return sorted(files)
             logger.warning(f"Could not find video directory for split '{split}'. Checked variants: {folder_candidates}")
             return []
             
@@ -450,13 +456,24 @@ class GEVCDataPreprocessor:
             # 5. Save HDF5
             h5_path = self.save_to_h5(vid_stem, split, video_tensor, tubes_processed, trajectories, audio_features)
             
+            lbl = annotation.get('label', -1)
+            if lbl == -1:
+                parent = video_path.parent.name.lower()
+                stem = video_path.stem
+                if 'pos' in parent or stem.startswith('videoH'):
+                    lbl = 1
+                elif 'neu' in parent or stem.startswith('videoN'):
+                    lbl = 2
+                elif 'neg' in parent or stem.startswith('videoS'):
+                    lbl = 3
+
             metadata = {
                 'video_name': vid_stem,
                 'split': split,
                 'num_people': len(tubes_processed),
                 'num_frames': len(video_frames),
                 'has_audio': audio_features is not None,
-                'label': annotation.get('label', -1),
+                'label': lbl,
                 'group_emotion': annotation.get('group_emotion', 'Unknown'),
                 'description': annotation.get('description', ''),
                 'data_path': h5_path
@@ -490,8 +507,8 @@ class GEVCDataPreprocessor:
                 key = video_path.stem 
                 anno = annotations.get(key, {}) 
                 
-                # Only process if we have annotations OR it is the test set
-                if anno or split == 'test':
+                # Process all found videos (label is inferred from folder/filename if anno is empty)
+                if True:
                     
                     # --- RESUME LOGIC ---
                     expected_h5_path = self.data_dir / split / f'{key}.h5'
@@ -519,8 +536,8 @@ class GEVCDataPreprocessor:
 
 if __name__ == "__main__":
     # UPDATE THESE PATHS
-    DATASET_ROOT = './GEVC'
-    OUTPUT_ROOT = './GEVC_processed'
+    DATASET_ROOT = './datasets/GECV/GECV-GroupVid'
+    OUTPUT_ROOT = './GECV_processed'
     
     processor = GEVCDataPreprocessor(
         dataset_root=DATASET_ROOT,
