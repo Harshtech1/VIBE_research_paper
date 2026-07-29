@@ -12,7 +12,7 @@ import numpy as np
 
 from model.vibe_model import VIBE_Transformer
 from dataloading.vibe_dataset import VIBEDataset, vibe_collate_fn, create_group_split
-from vizualization import VIBE_DeepVisualizer
+from .vizualization import VIBE_DeepVisualizer
 from losses.loss_function import VIBE_Loss
 
 class VIBETrainer:
