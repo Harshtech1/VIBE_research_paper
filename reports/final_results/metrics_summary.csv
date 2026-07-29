@@ -1,0 +1,11 @@
+metric,value
+Best Validation Accuracy,0.975610
+Best Weighted F1-Score,0.975351
+Best Macro F1-Score,0.978100
+Best Epoch,12
+Lowest Validation Loss,0.280343
+Average Epoch Time (seconds),15.42
+Total Training Time (seconds),462.6
+Number of Parameters,"16,346,243"
+Model Size (MB),62.39
+Peak GPU Memory Usage (MB),"2,048"
